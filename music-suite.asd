@@ -15,14 +15,18 @@
                  ((:file "utils")))
                 (:module "math"
                  :components
-                 ((:file "random")))
+                 ((:file "math")
+                  (:file "random")
+                  (:file "range")))
                 (:module "sequences"
                  :components
-                 ((:file "random")))
+                 ((:file "sequences")
+                  (:file "random")))
                 (:module "patterns"
                  :components
                  ((:file "patterns")
-                  (:file "sequence"))))))
+                  (:file "sequence")
+                  (:file "random"))))))
   :description ""
   :in-order-to ((test-op (test-op "music-suite/tests"))))
 

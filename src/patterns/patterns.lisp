@@ -18,6 +18,9 @@ multiple streams from that pattern, each of which are fully independent of each 
 
 This must be overriden by all subclasses of pattern"))
 
+(defmethod create-stream (obj)
+  obj)
+
 (defstruct lazy-stream
   "This is the root class for all lazy-streams. Lazy-streams are created from a pattern.
 
@@ -29,11 +32,15 @@ the stream is finished then this will return nil.
 
 This must be overriden by all subclasses of pattern"))
 
+(defmethod next (obj)
+  obj)
+
 (defgeneric peek (lazy-stream)
   (:documentation "This allows you to see the next value in the stream, without advancing
 the stream. This is typically something that should only be used by other sequence objects"))
 
-
+(defmethod peek (obj)
+  obj)
 
 
 
