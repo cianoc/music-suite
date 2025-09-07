@@ -47,7 +47,6 @@
                            :state state))
         (make-lazy-white))))
          
-
 (defun pat-white (&key (low 0.0) (high 0.0) 
                        length)
   (make-pattern-white :low low :high high :length length))

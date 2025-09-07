@@ -26,7 +26,8 @@
                  :components
                  ((:file "patterns")
                   (:file "sequence")
-                  (:file "random"))))))
+                  (:file "random")
+                  (:file "series"))))))
   :description ""
   :in-order-to ((test-op (test-op "music-suite/tests"))))
 
