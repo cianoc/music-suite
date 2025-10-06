@@ -1,80 +1,88 @@
 (in-package :music-suite/patterns)
 
 ;; pseries
-(defstruct (pattern-series (:include pattern)
+(defstruct (pattern-series (:include generator-pattern)
                            (:conc-name pat-series-))
   start
+  step)
+
+(defstruct (lazy-series (:include generator-stream))
   step
-  (length nil :type maybe-fixnum))
+  init-value)
 
-(defstruct (lazy-series (:include pattern))
-  val
-  step
-  (remaining nil :type maybe-fixnum))
+(defmethod make-stream ((pat pattern-series))
+  (let ((init-value (pat-series-start pat)))
+    (make-gen-stream #'make-lazy-series pat init-value
+                     :init-value init-value
+                     :step (make-stream (pat-series-step pat)))))
 
-(defmethod peek ((stream lazy-series))
-  (lazy-series-val stream))
+(defmethod active-p ((stream lazy-series))
+  (when (call-next-method)
+    (active-p (lazy-series-step stream))))
 
-(defmethod next ((stream lazy-series))
-  (let ((remaining (lazy-series-remaining stream))
-        (val (lazy-series-val stream))
-        (step (next (lazy-series-step stream))))
-    (when (and val
-               (not (and remaining (<= remaining 0))))
-      (if step
-          (incf (lazy-series-val stream) step)
-          (setf (lazy-series-val stream) nil))
-      (when remaining
-        (decf (lazy-series-remaining stream)))
-      val)))
+(defmethod next-value-in-stream ((stream lazy-series))
+  (let ((step (next (lazy-series-step stream)))
+        (value (lazy-series-value stream)))
+    (expand-arrays
+     (+ step value)
+     :expand (step value))))
 
-(defmethod create-stream ((pat pattern-series))
-  (make-lazy-series
-   :val (pat-series-start pat)
-   :step (create-stream 
-          (pat-series-step pat))
-   :remaining (pat-series-length pat)))
+;; (defmethod next-value-in-stream ((stream lazy-series))
+;;   (let ((step (next (lazy-series-step stream)))
+;;         (value (lazy-series-value stream)))
+;;     (if (or (vectorp value)(vectorp step))
+;;         (let* ((length (max (ensure-length step)
+;;                             (ensure-length value)))
+;;                (vec (make-array length)))
+;;           (loop for i below length
+;;                 do (setf (aref vec i)
+;;                          (+ (ensure-aref value i)
+;;                             (ensure-aref step i))))
+;;           vec)
+;;         (+ (lazy-series-value stream)
+;;            (next (lazy-series-step stream))))))
+
+;;           )
+;;     )
+;;   (+ (lazy-series-value stream)
+;;      (next (lazy-series-step stream))))
 
 (defun pat-series (&key (start 0) (step 1) length)
-  (make-pattern-series :start start :step step :length length))
+  (make-gen-pattern #'make-pattern-series length
+                    :start start
+                    :step step))
+
+(defmethod reset ((stream lazy-series))
+  (setf (lazy-series-value stream)
+        (lazy-series-init-value stream))
+  (reset (lazy-series-step stream))
+  (call-next-method))
 
 ;; Pgeom(start, grow, length)
-(defstruct (pattern-geom (:include pattern)
-                           (:conc-name pat-geom-))
-  start
+(defstruct (pattern-geom (:include generator-pattern)
+                         (:conc-name pat-geom-))
+  (start 1 :type number :read-only t)
+  mul)
+
+(defstruct (lazy-geom (:include generator-stream))
   mul
-  (length nil :type maybe-fixnum))
+  init-value)
 
-(defstruct (lazy-geom (:include pattern))
-  val
-  mul
-  (remaining nil :type maybe-fixnum))
+(defmethod make-stream ((pat pattern-geom))
+  (let ((init-value (pat-geom-start pat)))
+    (make-gen-stream #'make-lazy-geom pat init-value
+                     :init-value init-value
+                     :mul (make-stream (pat-geom-mul pat)))))
 
-(defmethod peek ((stream lazy-geom))
-  (lazy-geom-val stream))
+(defmethod active-p ((stream lazy-geom))
+  (when (call-next-method)
+    (active-p (lazy-geom-mul stream))))
 
-(defmethod next ((stream lazy-geom))
-  (let ((remaining (lazy-geom-remaining stream))
-        (val (lazy-geom-val stream))
-        (mul (next (lazy-geom-mul stream))))
-    (when (and val
-               (not (and remaining (<= remaining 0))))
-      (if mul
-          (setf (lazy-geom-val stream) 
-                (* val mul))
-          (setf (lazy-geom-val stream) nil))
-      (when remaining
-        (decf (lazy-geom-remaining stream)))
-      val)))
-
-(defmethod create-stream ((pat pattern-geom))
-  (make-lazy-geom
-   :val (pat-geom-start pat)
-   :mul (create-stream 
-         (pat-geom-mul pat))
-   :remaining (pat-geom-length pat)))
+(defmethod next-value-in-stream ((stream lazy-geom))
+  (* (lazy-geom-value stream)
+     (next (lazy-geom-mul stream))))
 
 (defun pat-geom (&key (start 1) (mul 2) length)
-  (make-pattern-geom :start start :mul mul :length length))
+  (make-gen-pattern #'make-pattern-geom length :start start :mul mul))
 
 ;; Geometric series (multiplication).

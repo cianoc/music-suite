@@ -5,5 +5,6 @@
                     (:serap :serapeum)
                     (:math :music-suite/math))
   (:import-from :mgl-pax #:defsection )
-  (:export :shuffle))
+  (:export :shuffle
+           :shuffle-in-place))
 (in-package #:music-suite/sequences)

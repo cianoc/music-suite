@@ -1,6 +1,6 @@
 (in-package :music-suite/math)
 
-(defun lin-lin (in &key (in1 0) (in2 1) out1 out2 (clip :min-max))
+(defun lin-lin (in &key (in1 0.0) (in2 1.0) out1 out2 (clip :min-max))
   (match clip
     (:min-max
      (when (< in in1) (return-from lin-lin out1))

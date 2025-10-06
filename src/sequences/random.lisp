@@ -3,10 +3,10 @@
 (defgeneric shuffle (seq)
   (:documentation "Shuffle a sequence. It will return a sequence with the same type as that passed in."))
 
-(defun shuffle-vec (vec)
+(defun shuffle-in-place (vec &optional (state *random-state*))
   (let ((size (length vec)))
     (loop for i :from 0 :to (- size 2)
-          for j = (math::rrand i size)
+          for j = (+ i (random (- size i) state))
           do (rotatef (aref vec i) (aref vec j))))
   vec)
 
@@ -15,8 +15,8 @@
 
 (defmethod shuffle ((lst cons))
   (let ((vec (coerce lst 'simple-vector)))
-    (coerce (shuffle-vec vec) 'list)))
+    (coerce (shuffle-in-place vec) 'list)))
 
 (defmethod shuffle ((vec vector))
   (let ((vec2 (copy-array vec)))
-    (shuffle-vec vec2)))
+    (shuffle-in-place vec2)))

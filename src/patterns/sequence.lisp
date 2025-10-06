@@ -1,61 +1,25 @@
-(in-package #:music-suite/patterns)
+(in-package :music-suite/patterns)
 
-;; First let's create the abstract classes underpinning this.
-(defstruct (pattern-vector (:include pattern)
-                           (:conc-name pat-vec-))
-  (sequence #() :type simple-vector)
-  (cycles nil :type maybe-fixnum))
+ 
+;; pseq
+(defstruct (pattern-sequence (:include pattern-phrase)
+                             (:conc-name pat-seq-)))
+                             
+(defstruct (lazy-sequence (:include lazy-phrase)
+                          (:conc-name lazy-seq-)))
 
-(defstruct (lazy-vector (:include lazy-stream)
-                          (:conc-name lazy-vec-))
-  (idx 0 :type fixnum)
-  (sequence #() :type simple-vector)
-  (remaining nil :type maybe-fixnum))
+(defmethod make-stream ((pat pattern-sequence))
+  (make-phrase-stream #'make-lazy-sequence pat 0))
+  
+(defmethod reset ((seq lazy-sequence))
+  (call-next-method)
+  (setf (lazy-seq-idx seq) 0))
 
-(defmethod peek ((stream lazy-vector))
-  (let* ((remaining (lazy-vec-remaining stream))
-         (seq (lazy-vec-sequence stream))
-         (size (length seq))
-         (idx (lazy-vec-idx stream)))
-    (unless (and remaining (<= remaining 0))
-      (aref seq (mod idx size)))))
+(defmethod next-phrase-idx ((seq lazy-sequence))
+    (1+ (lazy-seq-idx seq)))
 
-(defgeneric lazy-next-idx (stream))
-
-(defmethod next ((seq lazy-vector))
-  (let ((val (peek seq)))
-    (when val
-      (when (lazy-vec-remaining seq)
-        (decf (lazy-vec-remaining seq)))
-      (setf (lazy-vec-idx seq) 
-            (lazy-next-idx seq)))
-    val))
-
-;;;;; pseq ;;;;;;;;;;
-
-(defstruct (pattern-sequence (:include pattern-vector)
-                             (:conc-name pat-seq-))
-  (offset 0 :type fixnum))
-
-(defstruct (lazy-sequence (:include lazy-vector)
-                          (:conc-name lazy-seq-)))    
-
-(defmethod create-stream ((pat pattern-sequence))
-  (let* ((seq (pat-seq-sequence pat))
-         (size (fset:size seq))
-         (cycles (pat-seq-cycles pat)))
-    (make-lazy-sequence
-     :idx (mod (pat-seq-offset pat) size)
-     :sequence seq
-     :remaining (when cycles (* size cycles)))))
-
-(defmethod lazy-next-idx ((stream lazy-sequence))
-  (let ((idx (lazy-vec-idx stream))
-        (size (length (lazy-vec-sequence stream))))
-    (mod (incf idx) size)))
-
-(defun pat-seq (seq &key cycles (offset 0))
-"Create a pseq pattern. A pseq pattern takes a sequence (vector, array, list)
+(defun pseq (seq &key cycles length lace)
+  "Create a pseq pattern. A pseq pattern takes a sequence (vector, array, list)
 and lets you define a sequence based upon it.
 
 ### Parameters
@@ -85,36 +49,34 @@ So if you pass in an offset of 2 - the lazy-streams will start with the 2nd valu
 If the value passed in is larger than the size of the sequence, then the offset will simply be the remainder.
 E.g. if the length of the sequence is 4, and you pass in an offset of 5 - then a value of 1 will be used.
 "
-(make-pattern-sequence :sequence (coerce seq 'simple-vector)
-                       :cycles cycles
-                       :offset offset))
-
-
-;;;;; prand ;;;;;
-(defstruct (pattern-rand (:include pattern-vector)
-                         (:conc-name pat-rand-)))
-
-(defstruct (lazy-rand (:include lazy-vector)
+  (make-phrase-pattern #'make-pattern-sequence
+                    seq cycles length lace))
+    
+;; prand
+;; 
+(defstruct (pattern-rand (:include pattern-phrase)
+                         (:conc-name pat-rand-))
+  (state *random-state* :type random-state :read-only t))
+                             
+(defstruct (lazy-rand (:include lazy-phrase)
                       (:conc-name lazy-rand-))
-  state)
+  (state *random-state* :type random-state :read-only t))
 
-(defmethod create-stream ((pat pattern-rand))
-  (let* ((seq (pat-rand-sequence pat))
-         (size (length seq))
-         (cycles (pat-rand-cycles pat))
-         (state (make-random-state))
-         (remaining (when cycles (* size cycles))))
-    (make-lazy-rand
-     :sequence seq
-     :idx (random size state)
-     :state state
-     :remaining remaining)))
+(defmethod make-stream ((pat pattern-rand))
+  (let* ((state (pat-rand-state pat))
+         (stream (make-phrase-stream #'make-lazy-rand pat 0
+                  :state state)))
+    (setf (lazy-rand-idx stream)
+          (random (phrase-length stream)
+                (lazy-rand-state stream)))
+    stream))
 
-(defmethod lazy-next-idx ((stream lazy-rand))
-  (random (length (lazy-rand-sequence stream)) 
-          (lazy-rand-state stream)))
+(defmethod reset ((stream lazy-rand))
+  (call-next-method)
+  (setf (lazy-rand-idx stream)
+        (next-phrase-idx stream)))
 
-(defun pat-rand-seq (seq &key cycles)
+(defun prand (seq &key length cycles lace (state *random-state*))
   "Create a random pseq pattern. A pseq pattern takes a sequence (vector, array, list) and then randomly plays an element from that sequence each time.
 
 ### Parameters
@@ -134,37 +96,22 @@ A value of 1 means that the stream will play for the length of the sequence pass
 A value of 2 will play for 2x the length of the sequence.
 If you do not set this value then the sequence will loop for ever."
 
-  (make-pattern-rand :sequence (coerce seq 'simple-vector)
-                     :cycles cycles))
+  (make-phrase-pattern #'make-pattern-rand
+                       seq cycles length lace
+                       :state state))
+
+(defmethod next-phrase-idx ((stream lazy-rand))
+  (random (phrase-length stream)
+          (lazy-rand-state stream)))
 
 ;; pxrand
-(defstruct (pattern-xrand (:include pattern-vector)
+(defstruct (pattern-xrand (:include pattern-rand)
                           (:conc-name pat-xrand-)))
 
-(defstruct (lazy-xrand (:include lazy-vector)
-                       (:conc-name lazy-xrand-))
-  state)
+(defstruct (lazy-xrand (:include lazy-rand)
+                      (:conc-name lazy-xrand-)))
 
-(defmethod create-stream ((pat pattern-xrand))
-  (let* ((seq (pat-xrand-sequence pat))
-         (size (length seq))
-         (cycles (pat-xrand-cycles pat))
-         (state (make-random-state))
-         (remaining (when cycles (* size cycles))))
-    (make-lazy-xrand
-     :sequence seq
-     :idx (random size state)
-     :state state
-     :remaining remaining)))
-
-(defmethod lazy-next-idx ((stream lazy-xrand))
-  (let* ((size (length (lazy-xrand-sequence stream)))
-         (rand (1+ (random (1- size)
-                           (lazy-xrand-state stream))))
-         (idx (lazy-xrand-idx stream)))
-    (mod (+ idx rand) size)))
-
-(defun pat-xrand-seq (seq &key cycles)
+(defun pxrand (seq &key length cycles lace (state *random-state*))
   "Create a random pseq pattern. A pseq pattern takes a sequence (vector, array, list) and then randomly plays an element from that sequence each time.
 
 Unlike pat-rand-seq - this will never play the same value from the array
@@ -186,32 +133,64 @@ This affects how many times the stream will play.
 A value of 1 means that the stream will play for the length of the sequence passed in. 
 A value of 2 will play for 2x the length of the sequence.
 If you do not set this value then the sequence will loop for ever."
+  (make-phrase-pattern #'make-pattern-xrand
+                       seq cycles length lace
+                       :state state))
 
-  (make-pattern-xrand :sequence (coerce seq 'simple-vector)
-                      :cycles cycles))
+(defmethod next-phrase-idx ((stream lazy-xrand))
+  (1+ (random (1- (phrase-length stream))
+              (lazy-rand-state stream))))
 
-;;;;; pshuffle;;;;;
-(defstruct (pattern-shuffle (:include pattern-vector)
-                         (:conc-name pat-shuf-)))
+;; PShuffle
+(defstruct (pattern-shuffle (:include pattern-phrase)
+                            (:conc-name pat-shuf-))
+  (state *random-state* :type random-state :read-only t)
+  shuffle-every)
 
-(defstruct (lazy-shuffle (:include lazy-vector)
-                      (:conc-name lazy-shuf-)))
+(defstruct (lazy-shuffle (:include lazy-phrase)
+                         (:conc-name lazy-shuf-))
+  (state *random-state* :type random-state :read-only t)
+  shuffle-every
+  shuffle-count)
 
-(defmethod create-stream ((pat pattern-shuffle))
-  (let* ((seq (pat-shuf-sequence pat))
-         (size (length seq))
-         (cycles (pat-shuf-cycles pat))
-         (remaining (when cycles (* size cycles))))
-    (make-lazy-shuffle
-     :sequence (shuffle seq)
-     :idx 0
-     :remaining remaining)))
+(defmethod make-stream ((pat pattern-shuffle))
+  (let* ((state (pat-shuf-state pat))
+         (shuffle-every (make-stream (pat-shuf-shuffle-every pat)))
+         (stream (make-phrase-stream #'make-lazy-shuffle pat 0
+                  :state state
+                  :shuffle-every shuffle-every
+                  :shuffle-count (next shuffle-every))))
+    (shuffle-in-place (lazy-shuf-sequence stream)
+                      (lazy-shuf-state stream))
+    stream))
 
-(defmethod lazy-next-idx ((stream lazy-rand))
-  (random (length (lazy-rand-sequence stream)) 
-          (lazy-rand-state stream)))
+(defmethod reset ((seq lazy-shuffle))
+  (call-next-method)
+  (setf (lazy-shuf-idx seq) 0)
+  (reset (lazy-shuf-shuffle-every seq))
+  (setf (lazy-shuf-shuffle-count seq) (next (lazy-shuf-shuffle-every seq))))
 
-(defun pat-shuf-seq (seq &key cycles)
+(defmethod next-phrase-idx ((seq lazy-shuffle))
+  (when (lazy-shuf-shuffle-count seq)
+    (if (= 0 (lazy-shuf-shuffle-count seq))
+        (if (active-p (lazy-shuf-shuffle-count seq))
+            (progn
+              (shuffle-in-place (lazy-shuf-sequence seq)
+                                (lazy-shuf-state seq))
+              (setf (lazy-shuf-shuffle-count seq)
+                    (next (lazy-shuf-shuffle-every seq))))
+            (make-condition 'end-of-stream))
+        (decf (lazy-shuf-shuffle-count seq))))
+    (1+ (lazy-shuffle-idx seq)))
+
+(defmethod active-p ((seq lazy-shuffle))
+  (when (call-next-method)
+    (if (and (lazy-shuf-shuffle-count seq)
+             (= 0 (lazy-shuf-shuffle-count seq)))
+        (active-p (lazy-shuf-shuffle-every seq))
+        t)))
+
+(defun pshuf (seq &key length cycles shuffle-every shuffle-cycle lace (state *random-state*))
   "Create a pseq pattern. A pat-shuf-seq pattern takes a sequence (vector, array, list)
 shuffles it and then constructs a stream from it.
 
@@ -235,5 +214,11 @@ A value of 1 means that the stream will play for the length of the sequence pass
 A value of 2 will play for 2x the length of the sequence.
 If you do not set this value then the sequence will loop for ever.
 "
-  (make-pattern-shuffle :sequence (coerce seq 'simple-vector)
-                        :cycles cycles))
+  (let ((every (cond (shuffle-every shuffle-every)
+                     (shuffle-cycle (* shuffle-cycle (length seq)))
+                     (t nil))))
+  (make-phrase-pattern #'make-pattern-rand
+                       seq cycles length lace
+                       :shuffle-every every
+                       :state state)))
+
