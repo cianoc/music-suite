@@ -32,12 +32,12 @@ This must be overriden by all subclasses of pattern"))
 (defmethod make-stream (obj)
   obj)
 
-(defgeneric init-stream (stream)
-  (:documentation "Make stream should call this after constructing the struct"))
+;; (defgeneric init-stream (stream)
+;;   (:documentation "Make stream should call this after constructing the struct"))
 
-(defmethod init-stream ((stream lazy-stream))
-  (setf (lazy-stream-remaining stream)
-        (lazy-stream-length stream)))
+;; (defmethod init-stream ((stream lazy-stream))
+;;   (setf (lazy-stream-remaining stream)
+;;         (lazy-stream-length stream)))
 
 (defgeneric next (lazy-stream)
   (:documentation "This will advance the stream and return the next value in the stream. If
@@ -276,3 +276,20 @@ advance a generator stream."))
   (loop for x across (lazy-phrase-sequence seq)
         do (reset x)))
  
+;; Array Pattern
+(defstruct (pattern-array (:include pattern)
+                          (:conc-name pat-arr-))
+  (array #() :type simple-vector :read-only t))
+
+(defstruct (lazy-array (:include lazy-stream)
+                       (:conc-name lazy-arr-))
+  (array #() :type simple-vector))
+
+(defun make-stream ((pat pattern-array))
+  (let* ((src-array (pat-arr-array pat))
+         (dest-arr (make-array (length src-array))))
+    (loop for x across src-array
+          for i from 0
+          do (setf (aref dest-arr i) x))
+    
+  )
