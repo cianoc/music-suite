@@ -8,33 +8,41 @@
 
 (defstruct (scale (:constructor %make-scale))
   degrees
-  pitches-per-octave
   tuning
-  name)
+  name
+  base-freq)
 
-(defun make-scale (&key degrees pitches-per-octave tuning name)
-  (setf degrees (coerce degrees 'vector))
-  (unless pitches-per-octave
-    (let ((last-degree (aref degrees (1- (length degrees))))
-          (et-types #(12 19 24 53 128)))
-      (setf pitches-per-octave
-            (loop for x across et-types
-                  when (< last-degree x)
-                    return x
-                  finally
-                     (return x)))))
-  (if tuning
-      (when (/= pitches-per-octave (tuning-length tuning))
-        (error (format nil
-                       "Scale steps per octave:
-~d does not match tuning size: ~d"
-               pitches-per-octave
-               (tuning-length tuning))))
-      (setf tuning (default-tuning pitches-per-octave)))
-  (%make-scale :degrees degrees
-               :pitches-per-octave pitches-per-octave
+(defun scale-length (scale)
+  (length (scale-degrees scale)))
+
+(defun make-scale (&key degrees tuning base-freq (name "Unknown Scale"))
+  (%make-scale :degrees (coerce degrees 'vector)
                :tuning tuning
-               :name name))
+               :name name
+               :base-freq base-freq))
+
+(defun accidentals-from-degree (degree)
+  (let ((scale-degree (round degree)))
+    (round (* (- degree scale-degree) 10))))
+
+(defun octaves-from-degree (degree scale-length)
+  (floor (1- (round degree)) scale-length))
+                    
+(defun degree-freq (&key scale degree octave accidental down)
+  (declare (ignore down))
+  (let ((accidental (+ accidental
+                        (accidentals-from-degree degree)))
+        (octave (+ (octaves-from-degree degree
+                                         (scale-length scale))
+                    octave))
+        (index (1- (round degree)))
+        (base-freq (scale-base-freq scale)))
+    (freq-from-tuning (scale-tuning scale)
+                      base-freq
+                      (+ (aref (scale-degrees scale) index) accidental)
+                      octave)))
+
+
 
 (defun chromatic-scale (&optional (tuning (et-tuning)))
   (let ((len (tuning-length tuning)))
@@ -50,6 +58,12 @@
 
 (defun ratio-midi (ratio)
   (* 12.0 (log ratio 2)))
+
+(defun freq-cents (low-freq high-freq)
+  (* 1200 (log (/ high-freq low-freq) 2)))
+
+(defun cents (cents)
+  (* cents (expt 2 (/ 1 1200))))
 
 
 (defun degree-freq (scale degree &key octave accidental)
