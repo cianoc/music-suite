@@ -10,16 +10,27 @@
   degrees
   tuning
   name
-  base-freq)
+  tuning-note)
 
 (defun scale-length (scale)
   (length (scale-degrees scale)))
 
-(defun make-scale (&key degrees tuning base-freq (name "Unknown Scale"))
+(defun make-scale (&key degrees intervals tuning
+                     (name "Unknown Scale"))
+  (when (symbolp tuning)
+      (setf tuning (gethash tuning *tunings*)))
+  (when intervals
+    (setf degrees
+          (coerce 
+           (cons 0
+                 (loop with acc = 0
+                       for x across (coerce intervals 'vector)
+                       do (incf acc x)
+                       collect acc))
+           'vector)))
   (%make-scale :degrees (coerce degrees 'vector)
                :tuning tuning
-               :name name
-               :base-freq base-freq))
+               :name name))
 
 (defun accidentals-from-degree (degree)
   (let ((scale-degree (round degree)))
@@ -43,6 +54,15 @@
                       octave)))
 
 
+(defun tune-freq-degree (tuning degree octave)
+  (let* ((octave-ratio (tuning-octave-ratio tuning))
+         (len (tuning-length tuning))
+         (ratios (tuning-ratios tuning))
+         (octave (+ octave (truncate degree len)))
+         (degree (rem degree len)))
+    (* (tuning-base-freq tuning)
+       (expt octave-ratio octave)
+       (aref ratios degree))))
 
 (defun chromatic-scale (&optional (tuning (et-tuning)))
   (let ((len (tuning-length tuning)))
@@ -89,4 +109,11 @@
          (accidental (+ accidental (* (- degree scale-degree) 10))))
     
     (perform-degree-to-key scale steps-per-octave)
-  )
+  ))
+
+
+(defparameter *tunings*
+  (make-hash-table))
+
+(setf (gethash 'et12 *tunings*)
+      (make-tuning :pitches-per-octave 12 :name "et12"))
